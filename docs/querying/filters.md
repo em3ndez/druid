@@ -513,7 +513,7 @@ Filtering on a set of ISO 8601 intervals:
 }
 ```
 
-### True Filter
+### True filter
 The true filter is a filter which matches all values.  It can be used to temporarily disable other filters without removing the filter.
 
 ```json

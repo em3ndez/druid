@@ -28,6 +28,9 @@ exports.SQL_KEYWORDS = [
   'FROM',
   'WHERE',
   'GROUP BY',
+  'CUBE',
+  'ROLLUP',
+  'GROUPING SETS',
   'HAVING',
   'ORDER BY',
   'ASC',
@@ -40,7 +43,9 @@ exports.SQL_KEYWORDS = [
   'ON',
   'RIGHT',
   'OUTER',
-  'FULL'
+  'FULL',
+  'CROSS',
+  'USING'
 ];
 
 exports.SQL_EXPRESSION_PARTS = [
@@ -56,7 +61,9 @@ exports.SQL_EXPRESSION_PARTS = [
   'IS',
   'TO',
   'BETWEEN',
+  'SYMMETRIC',
   'LIKE',
+  'SIMILAR',
   'ESCAPE',
   'BOTH',
   'LEADING',

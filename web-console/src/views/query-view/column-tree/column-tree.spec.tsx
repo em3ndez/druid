@@ -62,7 +62,7 @@ describe('column tree', () => {
             },
           ] as ColumnMetadata[]
         }
-        onQueryStringChange={() => {}}
+        onQueryChange={() => {}}
       />
     );
 

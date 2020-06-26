@@ -17,9 +17,16 @@
  */
 
 import { Menu, MenuItem, Popover } from '@blueprintjs/core';
-import { IconNames } from '@blueprintjs/icons';
-import { HeaderRows, SqlQuery } from 'druid-query-toolkit';
-import { basicIdentifierEscape, basicLiteralEscape } from 'druid-query-toolkit/build/sql/helpers';
+import { IconName, IconNames } from '@blueprintjs/icons';
+import {
+  HeaderRows,
+  SqlComparison,
+  SqlExpression,
+  SqlLiteral,
+  SqlQuery,
+  SqlRef,
+  trimString,
+} from 'druid-query-toolkit';
 import React, { useState } from 'react';
 import ReactTable from 'react-table';
 
@@ -29,12 +36,6 @@ import { copyAndAlert } from '../../../utils';
 import { BasicAction, basicActionsToMenu } from '../../../utils/basic-action';
 
 import './query-output.scss';
-
-function trimValue(str: any): string {
-  str = String(str);
-  if (str.length < 102) return str;
-  return str.substr(0, 100) + '...';
-}
 
 export interface QueryOutputProps {
   loading: boolean;
@@ -51,81 +52,79 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
 
   function getHeaderMenu(header: string) {
     const { parsedQuery, onQueryChange, runeMode } = props;
+    const ref = SqlRef.factory(header);
+    const trimmedRef = ref.prettyTrim(50);
+    const descOrderBy = ref.sort('DESC');
+    const ascOrderBy = ref.sort('ASC');
 
     if (parsedQuery) {
-      const sorted = parsedQuery.getSorted();
+      const orderBy = parsedQuery.getOrderByForOutputColumn(header);
 
       const basicActions: BasicAction[] = [];
-      if (sorted) {
-        sorted.map(sorted => {
-          if (sorted.id === header) {
-            basicActions.push({
-              icon: sorted.desc ? IconNames.SORT_ASC : IconNames.SORT_DESC,
-              title: `Order by: ${trimValue(header)} ${sorted.desc ? 'ASC' : 'DESC'}`,
-              onAction: () => {
-                onQueryChange(parsedQuery.orderBy(header, sorted.desc ? 'ASC' : 'DESC'), true);
-              },
-            });
-          }
+      if (orderBy) {
+        const reverseOrderBy = orderBy.reverseDirection();
+        const reverseOrderByDirection = reverseOrderBy.getEffectiveDirection();
+        basicActions.push({
+          icon: reverseOrderByDirection === 'ASC' ? IconNames.SORT_ASC : IconNames.SORT_DESC,
+          title: `Order ${reverseOrderByDirection === 'ASC' ? 'ascending' : 'descending'}`,
+          onAction: () => {
+            onQueryChange(parsedQuery.changeOrderByParts([reverseOrderBy]), true);
+          },
         });
-      }
-      if (!basicActions.length) {
+      } else {
         basicActions.push(
           {
             icon: IconNames.SORT_DESC,
-            title: `Order by: ${trimValue(header)} DESC`,
+            title: `Order descending`,
             onAction: () => {
-              onQueryChange(parsedQuery.orderBy(header, 'DESC'), true);
+              onQueryChange(parsedQuery.changeOrderByParts([descOrderBy]), true);
             },
           },
           {
             icon: IconNames.SORT_ASC,
-            title: `Order by: ${trimValue(header)} ASC`,
+            title: `Order ascending`,
             onAction: () => {
-              onQueryChange(parsedQuery.orderBy(header, 'ASC'), true);
+              onQueryChange(parsedQuery.changeOrderByParts([ascOrderBy]), true);
             },
           },
         );
       }
+
       basicActions.push({
         icon: IconNames.CROSS,
-        title: `Remove: ${trimValue(header)}`,
+        title: `Remove: ${trimmedRef}`,
         onAction: () => {
-          onQueryChange(parsedQuery.remove(header), true);
+          onQueryChange(parsedQuery.removeOutputColumn(header), true);
         },
       });
 
       return basicActionsToMenu(basicActions);
     } else {
+      const descOrderByTrim = descOrderBy.prettyTrim(50);
+      const ascOrderByTrim = descOrderBy.prettyTrim(50);
       return (
         <Menu>
           <MenuItem
             icon={IconNames.CLIPBOARD}
-            text={`Copy: ${trimValue(header)}`}
+            text={`Copy: ${trimmedRef}`}
             onClick={() => {
-              copyAndAlert(header, `${header}' copied to clipboard`);
+              copyAndAlert(String(ref), `${trimmedRef}' copied to clipboard`);
             }}
           />
           {!runeMode && (
             <>
               <MenuItem
                 icon={IconNames.CLIPBOARD}
-                text={`Copy: ORDER BY ${basicIdentifierEscape(header)} ASC`}
+                text={`Copy: ${descOrderByTrim}`}
                 onClick={() =>
-                  copyAndAlert(
-                    `ORDER BY ${basicIdentifierEscape(header)} ASC`,
-                    `ORDER BY ${basicIdentifierEscape(header)} ASC' copied to clipboard`,
-                  )
+                  copyAndAlert(descOrderBy.toString(), `'${descOrderByTrim}' copied to clipboard`)
                 }
               />
               <MenuItem
                 icon={IconNames.CLIPBOARD}
-                text={`Copy: 'ORDER BY ${basicIdentifierEscape(header)} DESC'`}
+                text={`Copy: ${ascOrderByTrim}`}
                 onClick={() =>
-                  copyAndAlert(
-                    `ORDER BY ${basicIdentifierEscape(header)} DESC`,
-                    `ORDER BY ${basicIdentifierEscape(header)} DESC' copied to clipboard`,
-                  )
+                  copyAndAlert(ascOrderBy.toString(), `'${ascOrderByTrim}' copied to clipboard`)
                 }
               />
             </>
@@ -135,8 +134,37 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
     }
   }
 
+  function filterOnMenuItem(icon: IconName, clause: SqlExpression, aggregate: boolean) {
+    const { parsedQuery, onQueryChange } = props;
+    if (!parsedQuery) return;
+
+    return (
+      <MenuItem
+        icon={icon}
+        text={`${aggregate ? 'Having' : 'Filter on'}: ${clause.prettyTrim(50)}`}
+        onClick={() => {
+          onQueryChange(
+            aggregate ? parsedQuery.addToHaving(clause) : parsedQuery.addToWhere(clause),
+            true,
+          );
+        }}
+      />
+    );
+  }
+
+  function clipboardMenuItem(clause: SqlExpression) {
+    const trimmedLabel = clause.prettyTrim(50).toString();
+    return (
+      <MenuItem
+        icon={IconNames.CLIPBOARD}
+        text={`Copy: ${trimmedLabel}`}
+        onClick={() => copyAndAlert(clause.toString(), `${trimmedLabel} copied to clipboard`)}
+      />
+    );
+  }
+
   function getCellMenu(header: string, value: any) {
-    const { parsedQuery, onQueryChange, runeMode } = props;
+    const { parsedQuery, runeMode } = props;
 
     const showFullValueMenuItem =
       typeof value === 'string' ? (
@@ -151,78 +179,45 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
         undefined
       );
 
+    const ref = SqlRef.factory(header);
+    const val = SqlLiteral.factory(value);
+
     if (parsedQuery) {
+      const aggregate = parsedQuery.isAggregateOutputColumn(header);
       return (
         <Menu>
-          <MenuItem
-            icon={IconNames.FILTER_KEEP}
-            text={`Filter by: ${trimValue(header)} = ${trimValue(value)}`}
-            onClick={() => {
-              onQueryChange(parsedQuery.addWhereFilter(header, '=', value), true);
-            }}
-          />
-          <MenuItem
-            icon={IconNames.FILTER_REMOVE}
-            text={`Filter by: ${trimValue(header)} != ${trimValue(value)}`}
-            onClick={() => {
-              onQueryChange(parsedQuery.addWhereFilter(header, '!=', value), true);
-            }}
-          />
+          {filterOnMenuItem(IconNames.FILTER_KEEP, SqlComparison.equal(ref, val), aggregate)}
+          {filterOnMenuItem(IconNames.FILTER_REMOVE, SqlComparison.unequal(ref, val), aggregate)}
           {!isNaN(Number(value)) && (
             <>
-              <MenuItem
-                icon={IconNames.FILTER_KEEP}
-                text={`Filter by: ${trimValue(header)} >= ${trimValue(value)}`}
-                onClick={() => {
-                  onQueryChange(parsedQuery.addWhereFilter(header, '>=', value), true);
-                }}
-              />
-              <MenuItem
-                icon={IconNames.FILTER_KEEP}
-                text={`Filter by: ${trimValue(header)} <= ${trimValue(value)}`}
-                onClick={() => {
-                  onQueryChange(parsedQuery.addWhereFilter(header, '<=', value), true);
-                }}
-              />
+              {filterOnMenuItem(
+                IconNames.FILTER_KEEP,
+                SqlComparison.greaterThanOrEqual(ref, val),
+                aggregate,
+              )}
+              {filterOnMenuItem(
+                IconNames.FILTER_KEEP,
+                SqlComparison.lessThanOrEqual(ref, val),
+                aggregate,
+              )}
             </>
           )}
           {showFullValueMenuItem}
         </Menu>
       );
     } else {
+      const trimmedValue = trimString(String(value), 50);
       return (
         <Menu>
           <MenuItem
             icon={IconNames.CLIPBOARD}
-            text={`Copy: ${trimValue(value)}`}
-            onClick={() => copyAndAlert(value, `${value} copied to clipboard`)}
+            text={`Copy: ${trimmedValue}`}
+            onClick={() => copyAndAlert(value, `${trimmedValue} copied to clipboard`)}
           />
           {!runeMode && (
             <>
-              <MenuItem
-                icon={IconNames.CLIPBOARD}
-                text={`Copy: ${basicIdentifierEscape(header)} = ${basicLiteralEscape(value)}`}
-                onClick={() =>
-                  copyAndAlert(
-                    `${basicIdentifierEscape(header)} = ${basicLiteralEscape(value)}`,
-                    `${basicIdentifierEscape(header)} = ${basicLiteralEscape(
-                      value,
-                    )} copied to clipboard`,
-                  )
-                }
-              />
-              <MenuItem
-                icon={IconNames.CLIPBOARD}
-                text={`Copy: ${basicIdentifierEscape(header)} != ${basicLiteralEscape(value)}`}
-                onClick={() =>
-                  copyAndAlert(
-                    `${basicIdentifierEscape(header)} != ${basicLiteralEscape(value)}`,
-                    `${basicIdentifierEscape(header)} != ${basicLiteralEscape(
-                      value,
-                    )} copied to clipboard`,
-                  )
-                }
-              />
+              {clipboardMenuItem(SqlComparison.equal(ref, val))}
+              {clipboardMenuItem(SqlComparison.unequal(ref, val))}
             </>
           )}
           {showFullValueMenuItem}
@@ -236,26 +231,16 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
     if (!parsedQuery) return;
 
     const className = [];
-    const sorted = parsedQuery.getSorted();
-    const aggregateColumns = parsedQuery.getAggregateColumns();
-
-    if (sorted) {
-      const sortedColumnNames = sorted.map(column => column.id);
-      if (sortedColumnNames.includes(header)) {
-        className.push(sorted[sortedColumnNames.indexOf(header)].desc ? '-sort-desc' : '-sort-asc');
-      }
+    const orderBy = parsedQuery.getOrderByForOutputColumn(header);
+    if (orderBy) {
+      className.push(orderBy.getEffectiveDirection() === 'DESC' ? '-sort-desc' : '-sort-asc');
     }
 
-    if (aggregateColumns && aggregateColumns.includes(header)) {
+    if (parsedQuery.isAggregateOutputColumn(header)) {
       className.push('aggregate-header');
     }
 
     return className.join(' ');
-  }
-
-  let aggregateColumns: string[] | undefined;
-  if (parsedQuery) {
-    aggregateColumns = parsedQuery.getAggregateColumns();
   }
 
   return (
@@ -291,7 +276,9 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
               );
             },
             className:
-              aggregateColumns && aggregateColumns.includes(h) ? 'aggregate-column' : undefined,
+              parsedQuery && parsedQuery.isAggregateOutputColumn(h)
+                ? 'aggregate-column'
+                : undefined,
           };
         })}
       />

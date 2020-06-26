@@ -480,8 +480,8 @@ export class QueryView extends React.PureComponent<QueryViewProps, QueryViewStat
     let currentTable: string | undefined;
 
     if (result && result.parsedQuery) {
-      currentSchema = result.parsedQuery.getSchema();
-      currentTable = result.parsedQuery.getTableName();
+      currentSchema = result.parsedQuery.getFirstSchema();
+      currentTable = result.parsedQuery.getFirstTableName();
     } else if (localStorageGet(LocalStorageKeys.QUERY_KEY)) {
       const defaultQueryString = localStorageGet(LocalStorageKeys.QUERY_KEY);
 
@@ -490,8 +490,8 @@ export class QueryView extends React.PureComponent<QueryViewProps, QueryViewStat
         : undefined;
 
       if (defaultQueryAst) {
-        currentSchema = defaultQueryAst.getSchema();
-        currentTable = defaultQueryAst.getTableName();
+        currentSchema = defaultQueryAst.getFirstSchema();
+        currentTable = defaultQueryAst.getFirstTableName();
       }
     }
 
@@ -544,17 +544,17 @@ export class QueryView extends React.PureComponent<QueryViewProps, QueryViewStat
           error={error}
           queryResult={result ? result.queryResult : undefined}
           parsedQuery={result ? result.parsedQuery : undefined}
-          onQueryChange={this.handleQueryStringChange}
+          onQueryChange={this.handleQueryChange}
         />
       </SplitterLayout>
     );
   }
 
-  private handleQueryStringChange = (
-    queryString: string | SqlQuery,
-    preferablyRun?: boolean,
-  ): void => {
-    if (queryString instanceof SqlQuery) queryString = queryString.toString();
+  private handleQueryChange = (queryString: SqlQuery, preferablyRun?: boolean): void => {
+    this.handleQueryStringChange(queryString.toString(), preferablyRun);
+  };
+
+  private handleQueryStringChange = (queryString: string, preferablyRun?: boolean): void => {
     this.setState({ queryString, parsedQuery: parser(queryString) }, () => {
       const { autoRun } = this.state;
       if (preferablyRun && autoRun) this.handleRun();
@@ -614,8 +614,8 @@ export class QueryView extends React.PureComponent<QueryViewProps, QueryViewStat
     let defaultSchema;
     let defaultTable;
     if (parsedQuery instanceof SqlQuery) {
-      defaultSchema = parsedQuery.getSchema();
-      defaultTable = parsedQuery.getTableName();
+      defaultSchema = parsedQuery.getFirstSchema();
+      defaultTable = parsedQuery.getFirstTableName();
     }
 
     return (
@@ -627,7 +627,7 @@ export class QueryView extends React.PureComponent<QueryViewProps, QueryViewStat
             getParsedQuery={this.getParsedQuery}
             columnMetadataLoading={columnMetadataLoading}
             columnMetadata={columnMetadata}
-            onQueryStringChange={this.handleQueryStringChange}
+            onQueryChange={this.handleQueryChange}
             defaultSchema={defaultSchema ? defaultSchema : 'druid'}
             defaultTable={defaultTable}
           />

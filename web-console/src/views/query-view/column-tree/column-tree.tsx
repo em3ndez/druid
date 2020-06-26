@@ -27,40 +27,72 @@ import {
   Tree,
 } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
-import { SqlMulti, SqlQuery, SqlRef } from 'druid-query-toolkit';
+import {
+  parseSqlQuery,
+  SqlAlias,
+  SqlComparison,
+  SqlJoinPart,
+  SqlQuery,
+  SqlRef,
+} from 'druid-query-toolkit';
 import React, { ChangeEvent } from 'react';
 
 import { Loader } from '../../../components';
 import { Deferred } from '../../../components/deferred/deferred';
-import { copyAndAlert, escapeSqlIdentifier, groupBy } from '../../../utils';
+import { copyAndAlert, groupBy } from '../../../utils';
 import { ColumnMetadata } from '../../../utils/column-metadata';
 
 import { NumberMenuItems, StringMenuItems, TimeMenuItems } from './column-tree-menu';
 
 import './column-tree.scss';
 
+const STRING_QUERY = parseSqlQuery(`SELECT
+  ?,
+  COUNT(*) AS "Count"
+FROM ?
+WHERE "__time" >= CURRENT_TIMESTAMP - INTERVAL '1' DAY
+GROUP BY 1
+ORDER BY "Count" DESC`);
+
+const TIME_QUERY = parseSqlQuery(`SELECT
+  TIME_FLOOR(?, 'PT1H') AS "Time",
+  COUNT(*) AS "Count"
+FROM ?
+WHERE "__time" >= CURRENT_TIMESTAMP - INTERVAL '1' DAY
+GROUP BY 1
+ORDER BY "Time" ASC`);
+
+const NOFILTER_QUERY = parseSqlQuery(`SELECT
+  ?,
+  COUNT(*) AS "Count"
+FROM ?
+GROUP BY 1
+ORDER BY "Count" DESC`);
+
 function handleTableClick(
   tableSchema: string,
   nodeData: ITreeNode,
-  onQueryStringChange: (queryString: string, run: boolean) => void,
+  onQueryChange: (queryString: SqlQuery, run: boolean) => void,
 ): void {
-  let columns: string[];
+  let columns: SqlAlias[];
   if (nodeData.childNodes) {
-    columns = nodeData.childNodes.map(child => escapeSqlIdentifier(String(child.label)));
+    columns = nodeData.childNodes.map(child => SqlRef.factory(String(child.label)).as());
   } else {
-    columns = ['*'];
+    columns = [SqlAlias.STAR];
   }
+
   if (tableSchema === 'druid') {
-    onQueryStringChange(
-      `SELECT ${columns.join(', ')}
-FROM ${escapeSqlIdentifier(String(nodeData.label))}
-WHERE "__time" >= CURRENT_TIMESTAMP - INTERVAL '1' DAY`,
+    onQueryChange(
+      SqlQuery.factory(SqlRef.table(String(nodeData.label)))
+        .changeSelectValues(columns)
+        .changeWhereExpression(`__time >= CURRENT_TIMESTAMP - INTERVAL '1' DAY`),
       true,
     );
   } else {
-    onQueryStringChange(
-      `SELECT ${columns.join(', ')}
-FROM ${tableSchema}.${nodeData.label}`,
+    onQueryChange(
+      SqlQuery.factory(SqlRef.table(String(nodeData.label), tableSchema)).changeSelectValues(
+        columns,
+      ),
       true,
     );
   }
@@ -70,40 +102,27 @@ function handleColumnClick(
   columnSchema: string,
   columnTable: string,
   nodeData: ITreeNode,
-  onQueryStringChange: (queryString: string, run: boolean) => void,
+  onQueryChange: (queryString: SqlQuery, run: boolean) => void,
 ): void {
+  const columnRef = SqlRef.factory(String(nodeData.label));
   if (columnSchema === 'druid') {
     if (nodeData.icon === IconNames.TIME) {
-      onQueryStringChange(
-        `SELECT
-  TIME_FLOOR(${escapeSqlIdentifier(String(nodeData.label))}, 'PT1H') AS "Time",
-  COUNT(*) AS "Count"
-FROM ${escapeSqlIdentifier(columnTable)}
-WHERE "__time" >= CURRENT_TIMESTAMP - INTERVAL '1' DAY
-GROUP BY 1
-ORDER BY "Time" ASC`,
+      onQueryChange(
+        TIME_QUERY.fillPlaceholders([columnRef, SqlRef.table(columnTable)]) as SqlQuery,
         true,
       );
     } else {
-      onQueryStringChange(
-        `SELECT
-  "${nodeData.label}",
-  COUNT(*) AS "Count"
-FROM ${escapeSqlIdentifier(columnTable)}
-WHERE "__time" >= CURRENT_TIMESTAMP - INTERVAL '1' DAY
-GROUP BY 1
-ORDER BY "Count" DESC`,
+      onQueryChange(
+        STRING_QUERY.fillPlaceholders([columnRef, SqlRef.table(columnTable)]) as SqlQuery,
         true,
       );
     }
   } else {
-    onQueryStringChange(
-      `SELECT
-  ${escapeSqlIdentifier(String(nodeData.label))},
-  COUNT(*) AS "Count"
-FROM ${columnSchema}.${columnTable}
-GROUP BY 1
-ORDER BY "Count" DESC`,
+    onQueryChange(
+      NOFILTER_QUERY.fillPlaceholders([
+        columnRef,
+        SqlRef.table(columnTable, columnSchema),
+      ]) as SqlQuery,
       true,
     );
   }
@@ -113,7 +132,7 @@ export interface ColumnTreeProps {
   columnMetadataLoading: boolean;
   columnMetadata?: readonly ColumnMetadata[];
   getParsedQuery: () => SqlQuery | undefined;
-  onQueryStringChange: (queryString: string | SqlQuery, run?: boolean) => void;
+  onQueryChange: (queryString: SqlQuery, run?: boolean) => void;
   defaultSchema?: string;
   defaultTable?: string;
 }
@@ -125,24 +144,19 @@ export interface ColumnTreeState {
   selectedTreeIndex: number;
 }
 
-export function getCurrentColumns(parsedQuery: SqlQuery, table: string) {
-  let lookupColumn;
-  let originalTableColumn;
-  if (
-    parsedQuery.joinTable &&
-    parsedQuery.joinTable.table === table &&
-    parsedQuery.onExpression &&
-    parsedQuery.onExpression instanceof SqlMulti
-  ) {
-    parsedQuery.onExpression.arguments.map(argument => {
-      if (argument instanceof SqlRef) {
-        if (argument.namespace === 'lookup') {
-          lookupColumn = argument.column;
-        } else {
-          originalTableColumn = argument.column;
-        }
-      }
-    });
+export function getCurrentColumns(parsedQuery: SqlQuery, _table: string) {
+  const lookupColumn = 'XXX';
+  const originalTableColumn = 'XXX';
+  if (parsedQuery.joinParts && parsedQuery.joinParts.first()) {
+    // parsedQuery.onExpression.arguments.map(argument => {
+    //   if (argument instanceof SqlRef) {
+    //     if (argument.namespace === 'lookup') {
+    //       lookupColumn = argument.column;
+    //     } else {
+    //       originalTableColumn = argument.column;
+    //     }
+    //   }
+    // });
   }
 
   return {
@@ -194,7 +208,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                       label: columnData.COLUMN_NAME,
                                     })),
                                   },
-                                  props.onQueryStringChange,
+                                  props.onQueryChange,
                                 );
                               }}
                             />
@@ -210,7 +224,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                 icon={IconNames.EXCHANGE}
                                 text={`Replace FROM with: ${table}`}
                                 onClick={() => {
-                                  props.onQueryStringChange(parsedQuery.replaceFrom(table), true);
+                                  props.onQueryChange(parsedQuery.replaceFrom(table), true);
                                 }}
                               />
                             )}
@@ -218,7 +232,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                               <MenuItem
                                 popoverProps={{ openOnTargetFocus: false }}
                                 icon={IconNames.JOIN_TABLE}
-                                text={parsedQuery.joinTable ? `Replace join` : `Join`}
+                                text={parsedQuery.joinParts ? `Replace join` : `Join`}
                               >
                                 <MenuItem
                                   icon={IconNames.LEFT_JOIN}
@@ -228,17 +242,19 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                       parsedQuery,
                                       table,
                                     );
-                                    props.onQueryStringChange(
+                                    props.onQueryChange(
                                       parsedQuery.addJoin(
-                                        'LEFT',
-                                        SqlRef.fromString(table, schema).upgrade(),
-                                        SqlMulti.sqlMultiFactory('=', [
-                                          SqlRef.fromString(lookupColumn, table, 'lookup'),
-                                          SqlRef.fromString(
-                                            originalTableColumn,
-                                            parsedQuery.getTableName(),
+                                        SqlJoinPart.factory(
+                                          'LEFT',
+                                          SqlRef.factory(table, schema).upgrade(),
+                                          SqlComparison.equal(
+                                            SqlRef.factory(lookupColumn, table, 'lookup'),
+                                            SqlRef.factory(
+                                              originalTableColumn,
+                                              parsedQuery.getFirstTableName(),
+                                            ),
                                           ),
-                                        ]),
+                                        ),
                                       ),
                                       false,
                                     );
@@ -252,17 +268,19 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                       parsedQuery,
                                       table,
                                     );
-                                    props.onQueryStringChange(
+                                    props.onQueryChange(
                                       parsedQuery.addJoin(
-                                        'INNER',
-                                        SqlRef.fromString(table, schema).upgrade(),
-                                        SqlMulti.sqlMultiFactory('=', [
-                                          SqlRef.fromString(lookupColumn, table, 'lookup'),
-                                          SqlRef.fromString(
-                                            originalTableColumn,
-                                            parsedQuery.getTableName(),
+                                        SqlJoinPart.factory(
+                                          'INNER',
+                                          SqlRef.factory(table, schema).upgrade(),
+                                          SqlComparison.equal(
+                                            SqlRef.factory(lookupColumn, table, 'lookup'),
+                                            SqlRef.factory(
+                                              originalTableColumn,
+                                              parsedQuery.getFirstTableName(),
+                                            ),
                                           ),
-                                        ]),
+                                        ),
                                       ),
                                       false,
                                     );
@@ -271,14 +289,12 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                               </MenuItem>
                             )}
                             {parsedQuery &&
-                              parsedQuery.joinTable &&
-                              parsedQuery.joinTable.table === table && (
+                              parsedQuery.joinParts &&
+                              parsedQuery.joinParts.first().table.toString() === table && (
                                 <MenuItem
                                   icon={IconNames.EXCHANGE}
                                   text={`Remove join`}
-                                  onClick={() =>
-                                    props.onQueryStringChange(parsedQuery.removeJoin())
-                                  }
+                                  onClick={() => props.onQueryChange(parsedQuery.removeAllJoins())}
                                 />
                               )}
                           </Menu>
@@ -319,7 +335,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                           icon: ColumnTree.dataTypeToIcon(columnData.DATA_TYPE),
                                           label: columnData.COLUMN_NAME,
                                         },
-                                        props.onQueryStringChange,
+                                        props.onQueryChange,
                                       );
                                     }}
                                   />
@@ -331,7 +347,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                         schema={schema}
                                         columnName={columnData.COLUMN_NAME}
                                         parsedQuery={parsedQuery}
-                                        onQueryChange={props.onQueryStringChange}
+                                        onQueryChange={props.onQueryChange}
                                       />
                                     )}
                                   {parsedQuery && columnData.DATA_TYPE === 'VARCHAR' && (
@@ -340,7 +356,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                       schema={schema}
                                       columnName={columnData.COLUMN_NAME}
                                       parsedQuery={parsedQuery}
-                                      onQueryChange={props.onQueryStringChange}
+                                      onQueryChange={props.onQueryChange}
                                     />
                                   )}
                                   {parsedQuery && columnData.DATA_TYPE === 'TIMESTAMP' && (
@@ -349,7 +365,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                       schema={schema}
                                       columnName={columnData.COLUMN_NAME}
                                       parsedQuery={parsedQuery}
-                                      onQueryChange={props.onQueryStringChange}
+                                      onQueryChange={props.onQueryChange}
                                     />
                                   )}
                                   <MenuItem

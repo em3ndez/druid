@@ -19,16 +19,21 @@
 import { MenuItem } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import {
-  SqlAliasRef,
+  SqlAlias,
+  SqlBase,
+  SqlComparison,
+  SqlExpression,
   SqlFunction,
+  SqlJoinPart,
   SqlLiteral,
-  SqlMulti,
   SqlQuery,
   SqlRef,
 } from 'druid-query-toolkit';
 import React from 'react';
 
 import { getCurrentColumns } from '../../column-tree';
+
+const XXX = SqlLiteral.factory('xxx');
 
 export interface StringMenuItemsProps {
   schema: string;
@@ -42,34 +47,37 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
   function renderFilterMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
 
+    function filterMenuItem(clause: SqlExpression) {
+      return (
+        <MenuItem
+          text={clause.prettyTrim(50).toString()}
+          onClick={() => {
+            onQueryChange(parsedQuery.addToWhere(clause), false);
+          }}
+        />
+      );
+    }
+
     return (
       <MenuItem icon={IconNames.FILTER} text={`Filter`}>
-        <MenuItem
-          text={`"${columnName}" = 'xxx'`}
-          onClick={() => {
-            onQueryChange(parsedQuery.addWhereFilter(columnName, '=', 'xxx'), false);
-          }}
-        />
-        <MenuItem
-          text={`"${columnName}" LIKE '%xxx%'`}
-          onClick={() => {
-            onQueryChange(parsedQuery.addWhereFilter(columnName, 'LIKE', '%xxx%'), false);
-          }}
-        />
+        {filterMenuItem(SqlComparison.equal(SqlRef.factory(columnName), XXX))}
+        {filterMenuItem(
+          SqlComparison.like(SqlRef.factory(columnName), SqlLiteral.factory('%xxx%')),
+        )}
       </MenuItem>
     );
   }
 
   function renderRemoveFilter(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
-    if (!parsedQuery.getCurrentFilters().includes(columnName)) return;
+    if (!parsedQuery.getWhereExpression().containsColumn(columnName)) return;
 
     return (
       <MenuItem
         icon={IconNames.FILTER_REMOVE}
         text={`Remove filter`}
         onClick={() => {
-          onQueryChange(parsedQuery.removeFilter(columnName), true);
+          onQueryChange(parsedQuery.removeColumnFromWhere(columnName), true);
         }}
       />
     );
@@ -77,7 +85,8 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
 
   function renderRemoveGroupBy(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
-    if (!parsedQuery.hasGroupByColumn(columnName)) return;
+    if (!parsedQuery.hasGroupByOnColumn(columnName)) return;
+
     return (
       <MenuItem
         icon={IconNames.UNGROUP_OBJECTS}
@@ -91,78 +100,63 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
 
   function renderGroupByMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
-    if (!parsedQuery.groupByExpression) return;
+    if (!parsedQuery.hasGroupBy()) return;
+
+    function groupByMenuItem(alias: SqlBase) {
+      return (
+        <MenuItem
+          text={alias.prettyTrim(50).toString()}
+          onClick={() => {
+            onQueryChange(parsedQuery.addToGroupBy(alias), true);
+          }}
+        />
+      );
+    }
 
     return (
       <MenuItem icon={IconNames.GROUP_OBJECTS} text={`Group by`}>
-        <MenuItem
-          text={`"${columnName}"`}
-          onClick={() => {
-            onQueryChange(
-              parsedQuery.addToGroupBy(SqlRef.fromStringWithDoubleQuotes(columnName)),
-              true,
-            );
-          }}
-        />
-        <MenuItem
-          text={`SUBSTRING("${columnName}", 1, 2) AS "${columnName}_substring"`}
-          onClick={() => {
-            onQueryChange(
-              parsedQuery.addToGroupBy(
-                SqlAliasRef.sqlAliasFactory(
-                  SqlFunction.sqlFunctionFactory('SUBSTRING', [
-                    SqlRef.fromStringWithDoubleQuotes(columnName),
-                    SqlLiteral.fromInput(1),
-                    SqlLiteral.fromInput(2),
-                  ]),
-                  `${columnName}_substring`,
-                ),
-              ),
-              true,
-            );
-          }}
-        />
+        {groupByMenuItem(SqlRef.factory(columnName))}
+        {groupByMenuItem(
+          SqlFunction.factory('SUBSTRING', [
+            SqlRef.factory(columnName),
+            SqlLiteral.factory(1),
+            SqlLiteral.factory(2),
+          ]).as(`${columnName}_substring`),
+        )}
       </MenuItem>
     );
   }
 
   function renderAggregateMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
-    if (!parsedQuery.groupByExpression) return;
+    if (!parsedQuery.hasGroupBy()) return;
+
+    function aggregateMenuItem(alias: SqlAlias, run = true) {
+      return (
+        <MenuItem
+          text={alias.prettyTrim(50).toString()}
+          onClick={() => {
+            onQueryChange(parsedQuery.addColumn(alias), run);
+          }}
+        />
+      );
+    }
 
     return (
       <MenuItem icon={IconNames.FUNCTION} text={`Aggregate`}>
-        <MenuItem
-          text={`COUNT(DISTINCT "${columnName}") AS "dist_${columnName}"`}
-          onClick={() =>
-            onQueryChange(
-              parsedQuery.addAggregateColumn(
-                [SqlRef.fromStringWithDoubleQuotes(columnName)],
-                'COUNT',
-                `dist_${columnName}`,
-                undefined,
-                'DISTINCT',
-              ),
-              true,
-            )
-          }
-        />
-        <MenuItem
-          text={`COUNT(*) FILTER (WHERE "${columnName}" = 'xxx') AS ${columnName}_filtered_count `}
-          onClick={() => {
-            onQueryChange(
-              parsedQuery.addAggregateColumn(
-                [SqlRef.fromString('*')],
-                'COUNT',
-                `${columnName}_filtered_count`,
-                SqlMulti.sqlMultiFactory('=', [
-                  SqlRef.fromStringWithDoubleQuotes(columnName),
-                  SqlLiteral.fromInput('xxx'),
-                ]),
-              ),
-            );
-          }}
-        />
+        {aggregateMenuItem(
+          SqlFunction.factory('COUNT', [SqlRef.factory(columnName)], undefined, 'DISTINCT').as(
+            `dist_${columnName}`,
+          ),
+        )}
+        {aggregateMenuItem(
+          SqlFunction.factory(
+            'COUNT',
+            [SqlRef.STAR],
+            SqlComparison.equal(SqlRef.factory(columnName), XXX),
+          ).as(`${columnName}_filtered_count`),
+          false,
+        )}
       </MenuItem>
     );
   }
@@ -174,62 +168,65 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
     const { originalTableColumn, lookupColumn } = getCurrentColumns(parsedQuery, table);
 
     return (
-      <>
+      <MenuItem icon={IconNames.JOIN_TABLE} text={parsedQuery.joinParts ? `Replace join` : `Join`}>
         <MenuItem
-          icon={IconNames.JOIN_TABLE}
-          text={parsedQuery.joinTable ? `Replace join` : `Join`}
-        >
-          <MenuItem
-            icon={IconNames.LEFT_JOIN}
-            text={`Left join`}
-            onClick={() => {
-              onQueryChange(
-                parsedQuery.addJoin(
+          icon={IconNames.LEFT_JOIN}
+          text={`Left join`}
+          onClick={() => {
+            onQueryChange(
+              parsedQuery.addJoin(
+                SqlJoinPart.factory(
                   'LEFT',
-                  SqlRef.fromString(table, schema).upgrade(),
-                  SqlMulti.sqlMultiFactory('=', [
-                    SqlRef.fromString(columnName, table, 'lookup'),
-                    SqlRef.fromString(
+                  SqlRef.factory(table, schema).upgrade(),
+                  SqlComparison.equal(
+                    SqlRef.factory(columnName, table, 'lookup'),
+                    SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
-                      parsedQuery.getTableName(),
+                      parsedQuery.getFirstTableName(),
                     ),
-                  ]),
+                  ),
                 ),
-                false,
-              );
-            }}
-          />
-          <MenuItem
-            icon={IconNames.INNER_JOIN}
-            text={`Inner join`}
-            onClick={() => {
-              onQueryChange(
-                parsedQuery.addJoin(
+              ),
+              false,
+            );
+          }}
+        />
+        <MenuItem
+          icon={IconNames.INNER_JOIN}
+          text={`Inner join`}
+          onClick={() => {
+            onQueryChange(
+              parsedQuery.addJoin(
+                SqlJoinPart.factory(
                   'INNER',
-                  SqlRef.fromString(table, schema).upgrade(),
-                  SqlMulti.sqlMultiFactory('=', [
-                    SqlRef.fromString(columnName, table, 'lookup'),
-                    SqlRef.fromString(
+                  SqlRef.factory(table, schema).upgrade(),
+                  SqlComparison.equal(
+                    SqlRef.factory(columnName, table, 'lookup'),
+                    SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
-                      parsedQuery.getTableName(),
+                      parsedQuery.getFirstTableName(),
                     ),
-                  ]),
+                  ),
                 ),
-                false,
-              );
-            }}
-          />
-        </MenuItem>
-        {parsedQuery.onExpression &&
-          parsedQuery.onExpression instanceof SqlMulti &&
-          parsedQuery.onExpression.containsColumn(columnName) && (
-            <MenuItem
-              icon={IconNames.EXCHANGE}
-              text={`Remove join`}
-              onClick={() => onQueryChange(parsedQuery.removeJoin())}
-            />
-          )}
-      </>
+              ),
+              false,
+            );
+          }}
+        />
+      </MenuItem>
+    );
+  }
+
+  function renderRemoveJoin(): JSX.Element | undefined {
+    const { parsedQuery, onQueryChange } = props;
+    if (!parsedQuery.joinParts) return;
+
+    return (
+      <MenuItem
+        icon={IconNames.EXCHANGE}
+        text={`Remove join`}
+        onClick={() => onQueryChange(parsedQuery.removeAllJoins())}
+      />
     );
   }
 
@@ -241,6 +238,7 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
       {renderRemoveGroupBy()}
       {renderAggregateMenu()}
       {renderJoinMenu()}
+      {renderRemoveJoin()}
     </>
   );
 });

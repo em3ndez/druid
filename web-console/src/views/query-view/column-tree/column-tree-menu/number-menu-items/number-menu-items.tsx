@@ -33,6 +33,8 @@ import React from 'react';
 
 import { getCurrentColumns } from '../../column-tree';
 
+const NINE_THOUSAND = SqlLiteral.factory(9000);
+
 export interface NumberMenuItemsProps {
   table: string;
   schema: string;
@@ -44,6 +46,7 @@ export interface NumberMenuItemsProps {
 export const NumberMenuItems = React.memo(function NumberMenuItems(props: NumberMenuItemsProps) {
   function renderFilterMenu(): JSX.Element {
     const { columnName, parsedQuery, onQueryChange } = props;
+    const ref = SqlRef.factory(columnName);
 
     function filterMenuItem(clause: SqlExpression) {
       return (
@@ -58,12 +61,8 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
 
     return (
       <MenuItem icon={IconNames.FILTER} text={`Filter`}>
-        {filterMenuItem(
-          SqlComparison.greaterThan(SqlRef.factory(columnName), SqlLiteral.factory(100)),
-        )}
-        {filterMenuItem(
-          SqlComparison.lessThanOrEqual(SqlRef.factory(columnName), SqlLiteral.factory(100)),
-        )}
+        {filterMenuItem(SqlComparison.greaterThan(ref, NINE_THOUSAND))}
+        {filterMenuItem(SqlComparison.lessThanOrEqual(ref, NINE_THOUSAND))}
       </MenuItem>
     );
   }
@@ -86,6 +85,7 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
   function renderRemoveGroupBy(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupByOnColumn(columnName)) return;
+
     return (
       <MenuItem
         icon={IconNames.UNGROUP_OBJECTS}
@@ -100,6 +100,7 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
   function renderGroupByMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
+    const ref = SqlRef.factory(columnName);
 
     function groupByMenuItem(alias: SqlBase) {
       return (
@@ -114,11 +115,9 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
 
     return (
       <MenuItem icon={IconNames.GROUP_OBJECTS} text={`Group by`}>
-        {groupByMenuItem(SqlRef.factory(columnName))}
+        {groupByMenuItem(ref)}
         {groupByMenuItem(
-          SqlFunction.factory('TRUNC', [SqlRef.factory(columnName), SqlLiteral.factory(-1)]).as(
-            `${columnName}_truncated`,
-          ),
+          SqlFunction.factory('TRUNC', [ref, SqlLiteral.factory(-1)]).as(`${columnName}_truncated`),
         )}
       </MenuItem>
     );
@@ -127,6 +126,7 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
   function renderAggregateMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
+    const ref = SqlRef.factory(columnName);
 
     function aggregateMenuItem(alias: SqlAlias) {
       return (
@@ -141,15 +141,10 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
 
     return (
       <MenuItem icon={IconNames.FUNCTION} text={`Aggregate`}>
-        {aggregateMenuItem(
-          SqlFunction.factory('SUM', [SqlRef.factory(columnName)]).as(`sum_${columnName}`),
-        )}
-        {aggregateMenuItem(
-          SqlFunction.factory('MIN', [SqlRef.factory(columnName)]).as(`min_${columnName}`),
-        )}
-        {aggregateMenuItem(
-          SqlFunction.factory('MAX', [SqlRef.factory(columnName)]).as(`max_${columnName}`),
-        )}
+        {aggregateMenuItem(SqlFunction.factory('SUM', [ref]).as(`sum_${columnName}`))}
+        {aggregateMenuItem(SqlFunction.factory('MIN', [ref]).as(`min_${columnName}`))}
+        {aggregateMenuItem(SqlFunction.factory('MAX', [ref]).as(`max_${columnName}`))}
+        {aggregateMenuItem(SqlFunction.factory('AVG', [ref]).as(`avg_${columnName}`))}
       </MenuItem>
     );
   }

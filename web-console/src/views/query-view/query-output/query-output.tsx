@@ -92,7 +92,7 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
 
       basicActions.push({
         icon: IconNames.CROSS,
-        title: `Remove: ${trimmedRef}`,
+        title: `Remove ${trimmedRef}`,
         onAction: () => {
           onQueryChange(parsedQuery.removeOutputColumn(header), true);
         },

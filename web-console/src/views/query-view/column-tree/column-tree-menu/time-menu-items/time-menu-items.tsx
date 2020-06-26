@@ -129,7 +129,6 @@ export interface TimeMenuItemsProps {
 export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuItemsProps) {
   function renderFilterMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
-    const now = new Date();
 
     function filterMenuItem(label: string, clause: SqlExpression) {
       return (
@@ -142,6 +141,7 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
       );
     }
 
+    const now = new Date();
     const hourStart = floorHour(now);
     const dayStart = floorDay(now);
     const monthStart = floorMonth(now);

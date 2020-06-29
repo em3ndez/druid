@@ -20,7 +20,6 @@ import { Menu, MenuItem, Popover } from '@blueprintjs/core';
 import { IconName, IconNames } from '@blueprintjs/icons';
 import {
   HeaderRows,
-  SqlComparison,
   SqlExpression,
   SqlLiteral,
   SqlQuery,
@@ -54,8 +53,8 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
     const { parsedQuery, onQueryChange, runeMode } = props;
     const ref = SqlRef.factory(header);
     const trimmedRef = ref.prettyTrim(50);
-    const descOrderBy = ref.sort('DESC');
-    const ascOrderBy = ref.sort('ASC');
+    const descOrderBy = ref.toOrderByPart('DESC');
+    const ascOrderBy = ref.toOrderByPart('ASC');
 
     if (parsedQuery) {
       const orderBy = parsedQuery.getOrderByForOutputColumn(header);
@@ -186,20 +185,12 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
       const aggregate = parsedQuery.isAggregateOutputColumn(header);
       return (
         <Menu>
-          {filterOnMenuItem(IconNames.FILTER_KEEP, SqlComparison.equal(ref, val), aggregate)}
-          {filterOnMenuItem(IconNames.FILTER_REMOVE, SqlComparison.unequal(ref, val), aggregate)}
+          {filterOnMenuItem(IconNames.FILTER_KEEP, ref.equal(val), aggregate)}
+          {filterOnMenuItem(IconNames.FILTER_REMOVE, ref.unequal(val), aggregate)}
           {!isNaN(Number(value)) && (
             <>
-              {filterOnMenuItem(
-                IconNames.FILTER_KEEP,
-                SqlComparison.greaterThanOrEqual(ref, val),
-                aggregate,
-              )}
-              {filterOnMenuItem(
-                IconNames.FILTER_KEEP,
-                SqlComparison.lessThanOrEqual(ref, val),
-                aggregate,
-              )}
+              {filterOnMenuItem(IconNames.FILTER_KEEP, ref.greaterThanOrEqual(val), aggregate)}
+              {filterOnMenuItem(IconNames.FILTER_KEEP, ref.lessThanOrEqual(val), aggregate)}
             </>
           )}
           {showFullValueMenuItem}
@@ -216,8 +207,8 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
           />
           {!runeMode && (
             <>
-              {clipboardMenuItem(SqlComparison.equal(ref, val))}
-              {clipboardMenuItem(SqlComparison.unequal(ref, val))}
+              {clipboardMenuItem(ref.equal(val))}
+              {clipboardMenuItem(ref.unequal(val))}
             </>
           )}
           {showFullValueMenuItem}

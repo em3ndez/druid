@@ -28,9 +28,9 @@ import {
 } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import {
+  parseSqlExpression,
   parseSqlQuery,
-  SqlAlias,
-  SqlComparison,
+  SqlExpression,
   SqlJoinPart,
   SqlQuery,
   SqlRef,
@@ -46,11 +46,12 @@ import { NumberMenuItems, StringMenuItems, TimeMenuItems } from './column-tree-m
 
 import './column-tree.scss';
 
+const LAST_DAY = parseSqlExpression(`__time >= CURRENT_TIMESTAMP - INTERVAL '1' DAY`);
+
 const STRING_QUERY = parseSqlQuery(`SELECT
   ?,
   COUNT(*) AS "Count"
 FROM ?
-WHERE "__time" >= CURRENT_TIMESTAMP - INTERVAL '1' DAY
 GROUP BY 1
 ORDER BY "Count" DESC`);
 
@@ -58,81 +59,79 @@ const TIME_QUERY = parseSqlQuery(`SELECT
   TIME_FLOOR(?, 'PT1H') AS "Time",
   COUNT(*) AS "Count"
 FROM ?
-WHERE "__time" >= CURRENT_TIMESTAMP - INTERVAL '1' DAY
 GROUP BY 1
 ORDER BY "Time" ASC`);
 
-const NOFILTER_QUERY = parseSqlQuery(`SELECT
-  ?,
-  COUNT(*) AS "Count"
-FROM ?
-GROUP BY 1
-ORDER BY "Count" DESC`);
-
-function handleTableClick(
-  tableSchema: string,
-  nodeData: ITreeNode,
-  onQueryChange: (queryString: SqlQuery, run: boolean) => void,
-): void {
-  let columns: SqlAlias[];
-  if (nodeData.childNodes) {
-    columns = nodeData.childNodes.map(child => SqlRef.factory(String(child.label)).as());
-  } else {
-    columns = [SqlAlias.STAR];
-  }
-
-  if (tableSchema === 'druid') {
-    onQueryChange(
-      SqlQuery.factory(SqlRef.table(String(nodeData.label)))
-        .changeSelectValues(columns)
-        .changeWhereExpression(`__time >= CURRENT_TIMESTAMP - INTERVAL '1' DAY`),
-      true,
-    );
-  } else {
-    onQueryChange(
-      SqlQuery.factory(SqlRef.table(String(nodeData.label), tableSchema)).changeSelectValues(
-        columns,
-      ),
-      true,
-    );
-  }
+interface HandleTableClickOptions {
+  tableSchema: string;
+  tableName: string;
+  columns: readonly ColumnMetadata[];
+  parsedQuery: SqlQuery | undefined;
+  onQueryChange: (query: SqlQuery, run: boolean) => void;
 }
 
-function handleColumnClick(
-  columnSchema: string,
-  columnTable: string,
-  nodeData: ITreeNode,
-  onQueryChange: (queryString: SqlQuery, run: boolean) => void,
-): void {
-  const columnRef = SqlRef.factory(String(nodeData.label));
+function handleTableClick(options: HandleTableClickOptions): void {
+  const { tableSchema, tableName, columns, parsedQuery, onQueryChange } = options;
+
+  const tableRef = SqlRef.table(tableName, tableSchema === 'druid' ? undefined : tableSchema);
+
+  let where: SqlExpression | undefined;
+  if (parsedQuery && parsedQuery.getFirstTableName() === tableName) {
+    where = parsedQuery.whereExpression;
+  } else if (tableSchema === 'druid') {
+    where = LAST_DAY;
+  }
+
+  onQueryChange(
+    SqlQuery.factory(tableRef)
+      .changeSelectValues(columns.map(child => SqlRef.factory(child.COLUMN_NAME).as()))
+      .changeWhereExpression(where),
+    true,
+  );
+}
+
+interface HandleColumnClickOptions {
+  columnSchema: string;
+  columnTable: string;
+  columnName: string;
+  columnType: string;
+  parsedQuery: SqlQuery | undefined;
+  onQueryChange: (query: SqlQuery, run: boolean) => void;
+}
+
+function handleColumnClick(options: HandleColumnClickOptions): void {
+  const { columnSchema, columnTable, columnName, columnType, parsedQuery, onQueryChange } = options;
+
+  let query: SqlQuery;
+  const columnRef = SqlRef.factory(columnName);
   if (columnSchema === 'druid') {
-    if (nodeData.icon === IconNames.TIME) {
-      onQueryChange(
-        TIME_QUERY.fillPlaceholders([columnRef, SqlRef.table(columnTable)]) as SqlQuery,
-        true,
-      );
+    if (columnType === 'TIMESTAMP') {
+      query = TIME_QUERY.fillPlaceholders([columnRef, SqlRef.table(columnTable)]) as SqlQuery;
     } else {
-      onQueryChange(
-        STRING_QUERY.fillPlaceholders([columnRef, SqlRef.table(columnTable)]) as SqlQuery,
-        true,
-      );
+      query = STRING_QUERY.fillPlaceholders([columnRef, SqlRef.table(columnTable)]) as SqlQuery;
     }
   } else {
-    onQueryChange(
-      NOFILTER_QUERY.fillPlaceholders([
-        columnRef,
-        SqlRef.table(columnTable, columnSchema),
-      ]) as SqlQuery,
-      true,
-    );
+    query = STRING_QUERY.fillPlaceholders([
+      columnRef,
+      SqlRef.table(columnTable, columnSchema),
+    ]) as SqlQuery;
   }
+
+  let where: SqlExpression | undefined;
+  if (parsedQuery && parsedQuery.getFirstTableName() === columnTable) {
+    where = parsedQuery.whereExpression;
+  } else if (columnSchema === 'druid') {
+    where = LAST_DAY;
+  }
+
+  onQueryChange(query.changeWhereExpression(where), true);
 }
 
 export interface ColumnTreeProps {
   columnMetadataLoading: boolean;
   columnMetadata?: readonly ColumnMetadata[];
   getParsedQuery: () => SqlQuery | undefined;
-  onQueryChange: (queryString: SqlQuery, run?: boolean) => void;
+  onQueryChange: (query: SqlQuery, run?: boolean) => void;
   defaultSchema?: string;
   defaultTable?: string;
 }
@@ -196,20 +195,13 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                               icon={IconNames.FULLSCREEN}
                               text={`SELECT ... FROM ${table}`}
                               onClick={() => {
-                                handleTableClick(
-                                  schema,
-                                  {
-                                    id: table,
-                                    icon: IconNames.TH,
-                                    label: table,
-                                    childNodes: metadata.map(columnData => ({
-                                      id: columnData.COLUMN_NAME,
-                                      icon: ColumnTree.dataTypeToIcon(columnData.DATA_TYPE),
-                                      label: columnData.COLUMN_NAME,
-                                    })),
-                                  },
-                                  props.onQueryChange,
-                                );
+                                handleTableClick({
+                                  tableSchema: schema,
+                                  tableName: table,
+                                  columns: metadata,
+                                  parsedQuery,
+                                  onQueryChange: props.onQueryChange,
+                                });
                               }}
                             />
                             <MenuItem
@@ -247,8 +239,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                         SqlJoinPart.factory(
                                           'LEFT',
                                           SqlRef.factory(table, schema).upgrade(),
-                                          SqlComparison.equal(
-                                            SqlRef.factory(lookupColumn, table, 'lookup'),
+                                          SqlRef.factory(lookupColumn, table, 'lookup').equal(
                                             SqlRef.factory(
                                               originalTableColumn,
                                               parsedQuery.getFirstTableName(),
@@ -273,8 +264,7 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                         SqlJoinPart.factory(
                                           'INNER',
                                           SqlRef.factory(table, schema).upgrade(),
-                                          SqlComparison.equal(
-                                            SqlRef.factory(lookupColumn, table, 'lookup'),
+                                          SqlRef.factory(lookupColumn, table, 'lookup').equal(
                                             SqlRef.factory(
                                               originalTableColumn,
                                               parsedQuery.getFirstTableName(),
@@ -327,16 +317,14 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                     icon={IconNames.FULLSCREEN}
                                     text={`Show: ${columnData.COLUMN_NAME}`}
                                     onClick={() => {
-                                      handleColumnClick(
-                                        schema,
-                                        table,
-                                        {
-                                          id: columnData.COLUMN_NAME,
-                                          icon: ColumnTree.dataTypeToIcon(columnData.DATA_TYPE),
-                                          label: columnData.COLUMN_NAME,
-                                        },
-                                        props.onQueryChange,
-                                      );
+                                      handleColumnClick({
+                                        columnSchema: schema,
+                                        columnTable: table,
+                                        columnName: columnData.COLUMN_NAME,
+                                        columnType: columnData.DATA_TYPE,
+                                        parsedQuery,
+                                        onQueryChange: props.onQueryChange,
+                                      });
                                     }}
                                   />
                                   {parsedQuery &&

@@ -19,9 +19,7 @@
 import { MenuItem } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import {
-  SqlAlias,
   SqlBase,
-  SqlComparison,
   SqlExpression,
   SqlFunction,
   SqlJoinPart,
@@ -40,7 +38,7 @@ export interface NumberMenuItemsProps {
   schema: string;
   columnName: string;
   parsedQuery: SqlQuery;
-  onQueryChange: (queryString: SqlQuery, run?: boolean) => void;
+  onQueryChange: (query: SqlQuery, run?: boolean) => void;
 }
 
 export const NumberMenuItems = React.memo(function NumberMenuItems(props: NumberMenuItemsProps) {
@@ -61,8 +59,8 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
 
     return (
       <MenuItem icon={IconNames.FILTER} text={`Filter`}>
-        {filterMenuItem(SqlComparison.greaterThan(ref, NINE_THOUSAND))}
-        {filterMenuItem(SqlComparison.lessThanOrEqual(ref, NINE_THOUSAND))}
+        {filterMenuItem(ref.greaterThan(NINE_THOUSAND))}
+        {filterMenuItem(ref.lessThanOrEqual(NINE_THOUSAND))}
       </MenuItem>
     );
   }
@@ -128,12 +126,12 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
     if (!parsedQuery.hasGroupBy()) return;
     const ref = SqlRef.factory(columnName);
 
-    function aggregateMenuItem(alias: SqlAlias) {
+    function aggregateMenuItem(ex: SqlExpression, alias: string) {
       return (
         <MenuItem
-          text={alias.prettyTrim(50).toString()}
+          text={ex.prettyTrim(50).toString()}
           onClick={() => {
-            onQueryChange(parsedQuery.addColumn(alias), true);
+            onQueryChange(parsedQuery.addColumn(ex.as(alias)), true);
           }}
         />
       );
@@ -141,10 +139,10 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
 
     return (
       <MenuItem icon={IconNames.FUNCTION} text={`Aggregate`}>
-        {aggregateMenuItem(SqlFunction.factory('SUM', [ref]).as(`sum_${columnName}`))}
-        {aggregateMenuItem(SqlFunction.factory('MIN', [ref]).as(`min_${columnName}`))}
-        {aggregateMenuItem(SqlFunction.factory('MAX', [ref]).as(`max_${columnName}`))}
-        {aggregateMenuItem(SqlFunction.factory('AVG', [ref]).as(`avg_${columnName}`))}
+        {aggregateMenuItem(SqlFunction.factory('SUM', [ref]), `sum_${columnName}`)}
+        {aggregateMenuItem(SqlFunction.factory('MIN', [ref]), `min_${columnName}`)}
+        {aggregateMenuItem(SqlFunction.factory('MAX', [ref]), `max_${columnName}`)}
+        {aggregateMenuItem(SqlFunction.factory('AVG', [ref]), `avg_${columnName}`)}
       </MenuItem>
     );
   }
@@ -166,8 +164,7 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
                 SqlJoinPart.factory(
                   'LEFT',
                   SqlRef.factory(table, schema).upgrade(),
-                  SqlComparison.equal(
-                    SqlRef.factory(columnName, table, 'lookup'),
+                  SqlRef.factory(columnName, table, 'lookup').equal(
                     SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),
@@ -188,8 +185,7 @@ export const NumberMenuItems = React.memo(function NumberMenuItems(props: Number
                 SqlJoinPart.factory(
                   'INNER',
                   SqlRef.factory(table, schema).upgrade(),
-                  SqlComparison.equal(
-                    SqlRef.factory(columnName, table, 'lookup'),
+                  SqlRef.factory(columnName, table, 'lookup').equal(
                     SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),

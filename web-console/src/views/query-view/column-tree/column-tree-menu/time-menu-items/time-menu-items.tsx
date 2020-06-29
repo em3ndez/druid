@@ -20,8 +20,6 @@ import { MenuDivider, MenuItem } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import {
   parseSqlExpression,
-  SqlAlias,
-  SqlComparison,
   SqlExpression,
   SqlFunction,
   SqlJoinPart,
@@ -57,13 +55,6 @@ function fillWithColumnStartEnd(columnName: string, start: Date, end: Date): Sql
     ref,
     SqlLiteral.factory(end),
   ]) as SqlExpression;
-}
-
-function timeFloorAlias(columnName: string, duration: string, alias: string) {
-  return SqlAlias.factory(
-    SqlFunction.factory('TIME_FLOOR', [SqlRef.factory(columnName), SqlLiteral.factory(duration)]),
-    alias,
-  );
 }
 
 // ------------------------------------
@@ -123,7 +114,7 @@ export interface TimeMenuItemsProps {
   schema: string;
   columnName: string;
   parsedQuery: SqlQuery;
-  onQueryChange: (queryString: SqlQuery, run?: boolean) => void;
+  onQueryChange: (query: SqlQuery, run?: boolean) => void;
 }
 
 export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuItemsProps) {
@@ -207,13 +198,14 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
   function renderGroupByMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
+    const ref = SqlRef.factory(columnName);
 
-    function groupByMenuItem(alias: SqlAlias) {
+    function groupByMenuItem(ex: SqlExpression, alias: string) {
       return (
         <MenuItem
-          text={alias.prettyTrim(50).toString()}
+          text={ex.prettyTrim(50).toString()}
           onClick={() => {
-            onQueryChange(parsedQuery.addToGroupBy(alias), true);
+            onQueryChange(parsedQuery.addToGroupBy(ex.as(alias)), true);
           }}
         />
       );
@@ -221,9 +213,18 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
 
     return (
       <MenuItem icon={IconNames.GROUP_OBJECTS} text={`Group by`}>
-        {groupByMenuItem(timeFloorAlias(columnName, 'PT1H', `${columnName}_by_hour`))}
-        {groupByMenuItem(timeFloorAlias(columnName, 'P1D', `${columnName}_by_day`))}
-        {groupByMenuItem(timeFloorAlias(columnName, 'P7D', `${columnName}_by_week`))}
+        {groupByMenuItem(
+          SqlFunction.factory('TIME_FLOOR', [ref, SqlLiteral.factory('PT1H')]),
+          `${columnName}_by_hour`,
+        )}
+        {groupByMenuItem(
+          SqlFunction.factory('TIME_FLOOR', [ref, SqlLiteral.factory('P1D')]),
+          `${columnName}_by_day`,
+        )}
+        {groupByMenuItem(
+          SqlFunction.factory('TIME_FLOOR', [ref, SqlLiteral.factory('P7D')]),
+          `${columnName}_by_week`,
+        )}
       </MenuItem>
     );
   }
@@ -231,13 +232,14 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
   function renderAggregateMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
+    const ref = SqlRef.factory(columnName);
 
-    function aggregateMenuItem(alias: SqlAlias) {
+    function aggregateMenuItem(ex: SqlExpression, alias: string) {
       return (
         <MenuItem
-          text={alias.prettyTrim(50).toString()}
+          text={ex.prettyTrim(50).toString()}
           onClick={() => {
-            onQueryChange(parsedQuery.addColumn(alias), true);
+            onQueryChange(parsedQuery.addColumn(ex.as(alias)), true);
           }}
         />
       );
@@ -245,12 +247,8 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
 
     return (
       <MenuItem icon={IconNames.FUNCTION} text={`Aggregate`}>
-        {aggregateMenuItem(
-          SqlFunction.factory('MAX', [SqlRef.factory(columnName)]).as(`max_${columnName}`),
-        )}
-        {aggregateMenuItem(
-          SqlFunction.factory('MIN', [SqlRef.factory(columnName)]).as(`min_${columnName}`),
-        )}
+        {aggregateMenuItem(SqlFunction.factory('MAX', [ref]), `max_${columnName}`)}
+        {aggregateMenuItem(SqlFunction.factory('MIN', [ref]), `min_${columnName}`)}
       </MenuItem>
     );
   }
@@ -272,8 +270,7 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
                 SqlJoinPart.factory(
                   'LEFT',
                   SqlRef.factory(table, schema).upgrade(),
-                  SqlComparison.equal(
-                    SqlRef.factory(columnName, table, 'lookup'),
+                  SqlRef.factory(columnName, table, 'lookup').equal(
                     SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),
@@ -294,8 +291,7 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
                 SqlJoinPart.factory(
                   'INNER',
                   SqlRef.factory(table, schema).upgrade(),
-                  SqlComparison.equal(
-                    SqlRef.factory(columnName, table, 'lookup'),
+                  SqlRef.factory(columnName, table, 'lookup').equal(
                     SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),

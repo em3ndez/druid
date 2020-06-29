@@ -19,9 +19,6 @@
 import { MenuItem } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import {
-  SqlAlias,
-  SqlBase,
-  SqlComparison,
   SqlExpression,
   SqlFunction,
   SqlJoinPart,
@@ -40,19 +37,20 @@ export interface StringMenuItemsProps {
   table: string;
   columnName: string;
   parsedQuery: SqlQuery;
-  onQueryChange: (queryString: SqlQuery, run?: boolean) => void;
+  onQueryChange: (query: SqlQuery, run?: boolean) => void;
 }
 
 export const StringMenuItems = React.memo(function StringMenuItems(props: StringMenuItemsProps) {
   function renderFilterMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
+    const ref = SqlRef.factory(columnName);
 
-    function filterMenuItem(clause: SqlExpression) {
+    function filterMenuItem(clause: SqlExpression, run = true) {
       return (
         <MenuItem
           text={clause.prettyTrim(50).toString()}
           onClick={() => {
-            onQueryChange(parsedQuery.addToWhere(clause), false);
+            onQueryChange(parsedQuery.addToWhere(clause), run);
           }}
         />
       );
@@ -60,10 +58,9 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
 
     return (
       <MenuItem icon={IconNames.FILTER} text={`Filter`}>
-        {filterMenuItem(SqlComparison.equal(SqlRef.factory(columnName), XXX))}
-        {filterMenuItem(
-          SqlComparison.like(SqlRef.factory(columnName), SqlLiteral.factory('%xxx%')),
-        )}
+        {filterMenuItem(ref.isNotNull())}
+        {filterMenuItem(ref.equal(XXX), false)}
+        {filterMenuItem(ref.like(SqlLiteral.factory('%xxx%')), false)}
       </MenuItem>
     );
   }
@@ -102,12 +99,12 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
 
-    function groupByMenuItem(alias: SqlBase) {
+    function groupByMenuItem(ex: SqlExpression, alias?: string) {
       return (
         <MenuItem
-          text={alias.prettyTrim(50).toString()}
+          text={ex.prettyTrim(50).toString()}
           onClick={() => {
-            onQueryChange(parsedQuery.addToGroupBy(alias), true);
+            onQueryChange(parsedQuery.addToGroupBy(alias ? ex.as(alias) : ex), true);
           }}
         />
       );
@@ -121,7 +118,8 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
             SqlRef.factory(columnName),
             SqlLiteral.factory(1),
             SqlLiteral.factory(2),
-          ]).as(`${columnName}_substring`),
+          ]),
+          `${columnName}_substring`,
         )}
       </MenuItem>
     );
@@ -130,13 +128,14 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
   function renderAggregateMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
+    const ref = SqlRef.factory(columnName);
 
-    function aggregateMenuItem(alias: SqlAlias, run = true) {
+    function aggregateMenuItem(ex: SqlExpression, alias: string, run = true) {
       return (
         <MenuItem
-          text={alias.prettyTrim(50).toString()}
+          text={ex.prettyTrim(50).toString()}
           onClick={() => {
-            onQueryChange(parsedQuery.addColumn(alias), run);
+            onQueryChange(parsedQuery.addColumn(ex.as(alias)), run);
           }}
         />
       );
@@ -145,16 +144,12 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
     return (
       <MenuItem icon={IconNames.FUNCTION} text={`Aggregate`}>
         {aggregateMenuItem(
-          SqlFunction.factory('COUNT', [SqlRef.factory(columnName)], undefined, 'DISTINCT').as(
-            `dist_${columnName}`,
-          ),
+          SqlFunction.factory('COUNT', [ref], undefined, 'DISTINCT'),
+          `dist_${columnName}`,
         )}
         {aggregateMenuItem(
-          SqlFunction.factory(
-            'COUNT',
-            [SqlRef.STAR],
-            SqlComparison.equal(SqlRef.factory(columnName), XXX),
-          ).as(`${columnName}_filtered_count`),
+          SqlFunction.factory('COUNT', [SqlRef.STAR], ref.equal(XXX)),
+          `${columnName}_filtered_count`,
           false,
         )}
       </MenuItem>
@@ -178,8 +173,7 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
                 SqlJoinPart.factory(
                   'LEFT',
                   SqlRef.factory(table, schema).upgrade(),
-                  SqlComparison.equal(
-                    SqlRef.factory(columnName, table, 'lookup'),
+                  SqlRef.factory(columnName, table, 'lookup').equal(
                     SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),
@@ -200,8 +194,7 @@ export const StringMenuItems = React.memo(function StringMenuItems(props: String
                 SqlJoinPart.factory(
                   'INNER',
                   SqlRef.factory(table, schema).upgrade(),
-                  SqlComparison.equal(
-                    SqlRef.factory(columnName, table, 'lookup'),
+                  SqlRef.factory(columnName, table, 'lookup').equal(
                     SqlRef.factory(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),

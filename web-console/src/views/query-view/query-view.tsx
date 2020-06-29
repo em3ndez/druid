@@ -550,8 +550,8 @@ export class QueryView extends React.PureComponent<QueryViewProps, QueryViewStat
     );
   }
 
-  private handleQueryChange = (queryString: SqlQuery, preferablyRun?: boolean): void => {
-    this.handleQueryStringChange(queryString.toString(), preferablyRun);
+  private handleQueryChange = (query: SqlQuery, preferablyRun?: boolean): void => {
+    this.handleQueryStringChange(query.toString(), preferablyRun);
   };
 
   private handleQueryStringChange = (queryString: string, preferablyRun?: boolean): void => {

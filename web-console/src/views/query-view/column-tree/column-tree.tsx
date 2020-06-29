@@ -50,7 +50,7 @@ import { NumberMenuItems, StringMenuItems, TimeMenuItems } from './column-tree-m
 import './column-tree.scss';
 
 const LAST_DAY = parseSqlExpression(`__time >= CURRENT_TIMESTAMP - INTERVAL '1' DAY`);
-const COUNT_STAR = SqlFunction.factory('COUNT', [SqlRef.STAR]).as('Count');
+const COUNT_STAR = SqlFunction.simple('COUNT', [SqlRef.STAR]).as('Count');
 
 const FANCY_SEP = new Separator({
   left: '',
@@ -92,7 +92,7 @@ function handleTableClick(options: HandleTableClickOptions): void {
 
   onQueryChange(
     SqlQuery.factory(tableRef)
-      .changeSelectExpressions(columns.map(child => SqlRef.factory(child.COLUMN_NAME).as()))
+      .changeSelectExpressions(columns.map(child => SqlRef.column(child.COLUMN_NAME).as()))
       .changeWhereExpression(where),
     true,
   );
@@ -111,7 +111,7 @@ function handleColumnClick(options: HandleColumnClickOptions): void {
   const { columnSchema, columnTable, columnName, columnType, parsedQuery, onQueryChange } = options;
 
   let query: SqlQuery;
-  const columnRef = SqlRef.factory(columnName);
+  const columnRef = SqlRef.column(columnName);
   if (columnSchema === 'druid') {
     if (columnType === 'TIMESTAMP') {
       query = TIME_QUERY.fillPlaceholders([columnRef, SqlRef.table(columnTable)]) as SqlQuery;
@@ -259,9 +259,9 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                       parsedQuery.addJoin(
                                         SqlJoinPart.factory(
                                           'LEFT',
-                                          SqlRef.factory(table, schema).upgrade(),
-                                          SqlRef.factory(lookupColumn, table, 'lookup').equal(
-                                            SqlRef.factory(
+                                          SqlRef.column(table, schema).upgrade(),
+                                          SqlRef.column(lookupColumn, table, 'lookup').equal(
+                                            SqlRef.column(
                                               originalTableColumn,
                                               parsedQuery.getFirstTableName(),
                                             ),
@@ -284,9 +284,9 @@ export class ColumnTree extends React.PureComponent<ColumnTreeProps, ColumnTreeS
                                       parsedQuery.addJoin(
                                         SqlJoinPart.factory(
                                           'INNER',
-                                          SqlRef.factory(table, schema).upgrade(),
-                                          SqlRef.factory(lookupColumn, table, 'lookup').equal(
-                                            SqlRef.factory(
+                                          SqlRef.column(table, schema).upgrade(),
+                                          SqlRef.column(lookupColumn, table, 'lookup').equal(
+                                            SqlRef.column(
                                               originalTableColumn,
                                               parsedQuery.getFirstTableName(),
                                             ),

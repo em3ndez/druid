@@ -51,7 +51,7 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
 
   function getHeaderMenu(header: string) {
     const { parsedQuery, onQueryChange, runeMode } = props;
-    const ref = SqlRef.factory(header);
+    const ref = SqlRef.column(header);
     const trimmedRef = ref.prettyTrim(50);
     const descOrderBy = ref.toOrderByPart('DESC');
     const ascOrderBy = ref.toOrderByPart('ASC');
@@ -178,7 +178,7 @@ export const QueryOutput = React.memo(function QueryOutput(props: QueryOutputPro
         undefined
       );
 
-    const ref = SqlRef.factory(header);
+    const ref = SqlRef.column(header);
     const val = SqlLiteral.factory(value);
 
     if (parsedQuery) {

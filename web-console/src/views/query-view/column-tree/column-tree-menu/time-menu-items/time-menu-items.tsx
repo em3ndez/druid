@@ -44,11 +44,11 @@ const BETWEEN: SqlExpression = parseSqlExpression(`(? <= ? AND ? < ?)`);
 // ------------------------------------
 
 function fillWithColumn(b: SqlExpression, columnName: string): SqlExpression {
-  return b.fillPlaceholders([SqlRef.factory(columnName)]) as SqlExpression;
+  return b.fillPlaceholders([SqlRef.column(columnName)]) as SqlExpression;
 }
 
 function fillWithColumnStartEnd(columnName: string, start: Date, end: Date): SqlExpression {
-  const ref = SqlRef.factory(columnName);
+  const ref = SqlRef.column(columnName);
   return BETWEEN.fillPlaceholders([
     SqlLiteral.factory(start),
     ref,
@@ -198,7 +198,7 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
   function renderGroupByMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
-    const ref = SqlRef.factory(columnName);
+    const ref = SqlRef.column(columnName);
 
     function groupByMenuItem(ex: SqlExpression, alias: string) {
       return (
@@ -214,15 +214,15 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
     return (
       <MenuItem icon={IconNames.GROUP_OBJECTS} text={`Group by`}>
         {groupByMenuItem(
-          SqlFunction.factory('TIME_FLOOR', [ref, SqlLiteral.factory('PT1H')]),
+          SqlFunction.simple('TIME_FLOOR', [ref, SqlLiteral.factory('PT1H')]),
           `${columnName}_by_hour`,
         )}
         {groupByMenuItem(
-          SqlFunction.factory('TIME_FLOOR', [ref, SqlLiteral.factory('P1D')]),
+          SqlFunction.simple('TIME_FLOOR', [ref, SqlLiteral.factory('P1D')]),
           `${columnName}_by_day`,
         )}
         {groupByMenuItem(
-          SqlFunction.factory('TIME_FLOOR', [ref, SqlLiteral.factory('P7D')]),
+          SqlFunction.simple('TIME_FLOOR', [ref, SqlLiteral.factory('P7D')]),
           `${columnName}_by_week`,
         )}
       </MenuItem>
@@ -232,7 +232,7 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
   function renderAggregateMenu(): JSX.Element | undefined {
     const { columnName, parsedQuery, onQueryChange } = props;
     if (!parsedQuery.hasGroupBy()) return;
-    const ref = SqlRef.factory(columnName);
+    const ref = SqlRef.column(columnName);
 
     function aggregateMenuItem(ex: SqlExpression, alias: string) {
       return (
@@ -247,8 +247,8 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
 
     return (
       <MenuItem icon={IconNames.FUNCTION} text={`Aggregate`}>
-        {aggregateMenuItem(SqlFunction.factory('MAX', [ref]), `max_${columnName}`)}
-        {aggregateMenuItem(SqlFunction.factory('MIN', [ref]), `min_${columnName}`)}
+        {aggregateMenuItem(SqlFunction.simple('MAX', [ref]), `max_${columnName}`)}
+        {aggregateMenuItem(SqlFunction.simple('MIN', [ref]), `min_${columnName}`)}
       </MenuItem>
     );
   }
@@ -269,9 +269,9 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
               parsedQuery.addJoin(
                 SqlJoinPart.factory(
                   'LEFT',
-                  SqlRef.factory(table, schema).upgrade(),
-                  SqlRef.factory(columnName, table, 'lookup').equal(
-                    SqlRef.factory(
+                  SqlRef.column(table, schema).upgrade(),
+                  SqlRef.column(columnName, table, 'lookup').equal(
+                    SqlRef.column(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),
                     ),
@@ -290,9 +290,9 @@ export const TimeMenuItems = React.memo(function TimeMenuItems(props: TimeMenuIt
               parsedQuery.addJoin(
                 SqlJoinPart.factory(
                   'INNER',
-                  SqlRef.factory(table, schema).upgrade(),
-                  SqlRef.factory(columnName, table, 'lookup').equal(
-                    SqlRef.factory(
+                  SqlRef.column(table, schema).upgrade(),
+                  SqlRef.column(columnName, table, 'lookup').equal(
+                    SqlRef.column(
                       lookupColumn === columnName ? originalTableColumn : 'XXX',
                       parsedQuery.getFirstTableName(),
                     ),

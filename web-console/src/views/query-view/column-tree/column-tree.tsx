@@ -126,12 +126,15 @@ function handleColumnClick(options: HandleColumnClickOptions): void {
   }
 
   let where: SqlExpression | undefined;
-  let aggregates: SqlAlias[] = [COUNT_STAR];
+  let aggregates: SqlAlias[] = [];
   if (parsedQuery && parsedQuery.getFirstTableName() === columnTable) {
     where = parsedQuery.whereExpression;
     aggregates = parsedQuery.getAggregateSelectExpressions();
   } else if (columnSchema === 'druid') {
     where = LAST_DAY;
+  }
+  if (!aggregates.length) {
+    aggregates.push(COUNT_STAR);
   }
 
   let newSelectExpressions = query.selectExpressions;

@@ -30,7 +30,10 @@ import { IconNames } from '@blueprintjs/icons';
 import {
   parseSqlExpression,
   parseSqlQuery,
+  Separator,
+  SqlAlias,
   SqlExpression,
+  SqlFunction,
   SqlJoinPart,
   SqlQuery,
   SqlRef,
@@ -47,17 +50,22 @@ import { NumberMenuItems, StringMenuItems, TimeMenuItems } from './column-tree-m
 import './column-tree.scss';
 
 const LAST_DAY = parseSqlExpression(`__time >= CURRENT_TIMESTAMP - INTERVAL '1' DAY`);
+const COUNT_STAR = SqlFunction.factory('COUNT', [SqlRef.STAR]).as('Count');
+
+const FANCY_SEP = new Separator({
+  left: '',
+  separator: ',',
+  right: '\n  ',
+});
 
 const STRING_QUERY = parseSqlQuery(`SELECT
-  ?,
-  COUNT(*) AS "Count"
+  ?
 FROM ?
 GROUP BY 1
 ORDER BY "Count" DESC`);
 
 const TIME_QUERY = parseSqlQuery(`SELECT
-  TIME_FLOOR(?, 'PT1H') AS "Time",
-  COUNT(*) AS "Count"
+  TIME_FLOOR(?, 'PT1H') AS "Time"
 FROM ?
 GROUP BY 1
 ORDER BY "Time" ASC`);
@@ -84,7 +92,7 @@ function handleTableClick(options: HandleTableClickOptions): void {
 
   onQueryChange(
     SqlQuery.factory(tableRef)
-      .changeSelectValues(columns.map(child => SqlRef.factory(child.COLUMN_NAME).as()))
+      .changeSelectExpressions(columns.map(child => SqlRef.factory(child.COLUMN_NAME).as()))
       .changeWhereExpression(where),
     true,
   );
@@ -118,13 +126,23 @@ function handleColumnClick(options: HandleColumnClickOptions): void {
   }
 
   let where: SqlExpression | undefined;
+  let aggregates: SqlAlias[] = [COUNT_STAR];
   if (parsedQuery && parsedQuery.getFirstTableName() === columnTable) {
     where = parsedQuery.whereExpression;
+    aggregates = parsedQuery.getAggregateSelectExpressions();
   } else if (columnSchema === 'druid') {
     where = LAST_DAY;
   }
 
-  onQueryChange(query.changeWhereExpression(where), true);
+  let newSelectExpressions = query.selectExpressions;
+  for (const aggregate of aggregates) {
+    newSelectExpressions = newSelectExpressions.addLast(aggregate, FANCY_SEP);
+  }
+
+  onQueryChange(
+    query.changeSelectExpressions(newSelectExpressions).changeWhereExpression(where),
+    true,
+  );
 }
 
 export interface ColumnTreeProps {

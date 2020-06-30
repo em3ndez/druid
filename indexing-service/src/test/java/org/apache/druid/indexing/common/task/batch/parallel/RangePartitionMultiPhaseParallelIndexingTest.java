@@ -144,7 +144,14 @@ public class RangePartitionMultiPhaseParallelIndexingTest extends AbstractMultiP
       try (final Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
         for (int i = 0; i < (NUM_ROW / NUM_DAY); i++) {
           for (int d = 0; d < NUM_DAY; d++) {
+            // This is the original row
             writeRow(writer, i + d, fileIndex + d, intervalToDim1);
+
+            // This row should get rolled up with original row
+            writeRow(writer, i + d, fileIndex + d, intervalToDim1);
+
+            // This row should not get rolled up with original row
+            writeRow(writer, i + d, fileIndex + d + NUM_FILE, intervalToDim1);
           }
         }
       }
@@ -166,7 +173,7 @@ public class RangePartitionMultiPhaseParallelIndexingTest extends AbstractMultiP
   @Test
   public void createsCorrectRangePartitions() throws Exception
   {
-    int targetRowsPerSegment = NUM_ROW / NUM_DAY / NUM_PARTITION;
+    int targetRowsPerSegment = NUM_ROW * 2 / NUM_DAY / NUM_PARTITION;
     final Set<DataSegment> publishedSegments = runTestTask(
         PARSE_SPEC,
         Intervals.of("%s/%s", YEAR, YEAR + 1),
